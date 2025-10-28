@@ -1,402 +1,278 @@
 #include <stdio.h>
 #include <stdlib.h>
-#include <string.h>
-#include <stdbool.h>
 #include <time.h>
+#include <string.h>
 
 // --- ENUMS AND STRUCTS ---
 
-// Enum for card colors
+// Using enums for readable, clean code.
 typedef enum {
     RED,
-    YELLOW,
     GREEN,
     BLUE,
-    WILD_COLOR // For Wild and Wild Draw 4
+    YELLOW,
+    NO_COLOR // Used for empty card slots
 } Color;
 
-// Enum for card types
 typedef enum {
     ZERO, ONE, TWO, THREE, FOUR, FIVE, SIX, SEVEN, EIGHT, NINE,
-    SKIP,
-    REVERSE,
-    DRAW_TWO,
-    WILD_TYPE,
-    WILD_DRAW_FOUR
+    NO_TYPE // Used for empty card slots
 } CardType;
 
-// Struct for a single card
+
+// The fundamental building block of the game
 typedef struct {
     Color color;
     CardType type;
 } Card;
 
-// Linked List Node for player's hand
-typedef struct CardNode {
-    Card card;
-    struct CardNode* next;
-} CardNode;
+// We need an array for the deck. 4 colors * 10 numbers = 40 cards.
+#define DECK_SIZE 40
+#define MAX_HAND_SIZE 20 // Players will have a fixed-size array for their hand
 
-// Struct for a player
 typedef struct {
-    char name[50];
-    CardNode* hand;
+    char name[20];
+    Card hand[MAX_HAND_SIZE];
     int card_count;
 } Player;
 
-// --- GLOBAL CONSTANTS & VARIABLES ---
 
-const int NUM_CARDS_IN_DECK = 108;
-Card DECK[108];
-Card DISCARD_PILE[108];
+// --- GLOBAL VARIABLES ---
+
+Card DECK[DECK_SIZE];
+Card DISCARD_PILE[DECK_SIZE]; // Can't be larger than the deck
 int deck_top = -1;
 int discard_top = -1;
+int num_players = 0;
+Player players[4]; // Max 4 players
 
-// --- UTILITY FUNCTIONS ---
 
-// Function to get string representation of color
-const char* color_to_string(Color c) {
-    switch (c) {
-        case RED: return "Red";
-        case YELLOW: return "Yellow";
-        case GREEN: return "Green";
-        case BLUE: return "Blue";
-        case WILD_COLOR: return "Wild";
-    }
-    return "";
-}
+// --- FUNCTION PROTOTYPES ---
 
-// Function to get string representation of card type
-const char* type_to_string(CardType t) {
-    switch (t) {
-        case SKIP: return "Skip";
-        case REVERSE: return "Reverse";
-        case DRAW_TWO: return "Draw Two";
-        case WILD_TYPE: return "Wild";
-        case WILD_DRAW_FOUR: return "Wild Draw 4";
-        default: {
-            static char num_str[2];
-            sprintf(num_str, "%d", t);
-            return num_str;
+void create_deck();
+void shuffle_deck();
+void deal_cards();
+Card draw_card();
+void play_card(int player_idx, int hand_idx);
+
+void print_card(Card card);
+void print_hand(int player_idx);
+int is_playable(Card top_card, Card card_to_play);
+
+// --- MAIN GAME LOGIC ---
+
+int main() {
+    srand(time(NULL)); // Seed for random numbers
+
+    // 1. Setup Game
+    printf("--- Welcome to Simple UNO! ---\n");
+    do {
+        printf("Enter number of players (2-4): ");
+        scanf("%d", &num_players);
+    } while (num_players < 2 || num_players > 4);
+
+    for (int i = 0; i < num_players; i++) {
+        sprintf(players[i].name, "Player %d", i + 1);
+        players[i].card_count = 0;
+        // Initialize hand with empty cards
+        for (int j = 0; j < MAX_HAND_SIZE; j++) {
+            players[i].hand[j].color = NO_COLOR;
+            players[i].hand[j].type = NO_TYPE;
         }
     }
-}
 
-// Function to print a card
-void print_card(Card c) {
-    if (c.color == WILD_COLOR) {
-        printf("[%s]", type_to_string(c.type));
-    } else {
-        printf("[%s %s]", color_to_string(c.color), type_to_string(c.type));
+    create_deck();
+    shuffle_deck();
+    deal_cards();
+
+    // Start the discard pile with one card from the deck
+    DISCARD_PILE[++discard_top] = draw_card();
+
+    // 2. Game Loop
+    int current_player = 0;
+    int game_over = 0;
+
+    while (!game_over) {
+        Card top_card = DISCARD_PILE[discard_top];
+
+        printf("\n--- %s's Turn ---\n", players[current_player].name);
+        printf("Top Card: ");
+        print_card(top_card);
+        printf("\n");
+
+        print_hand(current_player);
+
+        // Find a playable card in hand
+        int playable_card_idx = -1;
+        for (int i = 0; i < MAX_HAND_SIZE; i++) {
+            if (players[current_player].hand[i].color != NO_COLOR && is_playable(top_card, players[current_player].hand[i])) {
+                playable_card_idx = i;
+                break;
+            }
+        }
+
+        if (playable_card_idx != -1) {
+            // Player has a card they can play
+            int choice = 0;
+            do {
+                printf("Enter card number to play (1-%d) or 0 to draw: ", players[current_player].card_count);
+                scanf("%d", &choice);
+
+                // Basic validation
+                if (choice > 0 && choice <= players[current_player].card_count) {
+                    // Find the actual index in the sparse array
+                    int card_idx_in_hand = -1;
+                    int visible_card_counter = 0;
+                    for(int i=0; i<MAX_HAND_SIZE; ++i){
+                        if(players[current_player].hand[i].color != NO_COLOR){
+                            visible_card_counter++;
+                            if(visible_card_counter == choice){
+                                card_idx_in_hand = i;
+                                break;
+                            }
+                        }
+                    }
+
+                    if (card_idx_in_hand != -1 && is_playable(top_card, players[current_player].hand[card_idx_in_hand])) {
+                        play_card(current_player, card_idx_in_hand);
+                        break; // Valid move, exit loop
+                    } else {
+                        printf("You can't play that card. Try again.\n");
+                        choice = -1; // Force loop to repeat
+                    }
+                } else if (choice == 0) {
+                     // Player chooses to draw
+                    Card new_card = draw_card();
+                    printf("%s draws a card: ", players[current_player].name);
+                    print_card(new_card);
+                    printf("\n");
+                    // Add card to first available slot in hand
+                    for (int i = 0; i < MAX_HAND_SIZE; i++) {
+                        if (players[current_player].hand[i].color == NO_COLOR) {
+                            players[current_player].hand[i] = new_card;
+                            players[current_player].card_count++;
+                            break;
+                        }
+                    }
+                    break; // Exit loop after drawing
+                }
+            } while (choice < 0 || choice > players[current_player].card_count);
+        } else {
+            // Player must draw
+            printf("No playable cards. You must draw.\n");
+            Card new_card = draw_card();
+            printf("%s draws a card: ", players[current_player].name);
+            print_card(new_card);
+            printf("\n");
+            // Add card to first available slot in hand
+            for (int i = 0; i < MAX_HAND_SIZE; i++) {
+                if (players[current_player].hand[i].color == NO_COLOR) {
+                    players[current_player].hand[i] = new_card;
+                    players[current_player].card_count++;
+                    break;
+                }
+            }
+        }
+
+        // Check for winner
+        if (players[current_player].card_count == 0) {
+            printf("\n%s wins the game!\n", players[current_player].name);
+            game_over = 1;
+        }
+
+        // Move to next player
+        current_player = (current_player + 1) % num_players;
     }
+
+    return 0;
 }
 
-// --- DECK MANAGEMENT ---
 
-// Creates the full 108-card UNO deck
+// --- FUNCTION DEFINITIONS ---
+
 void create_deck() {
-    int i = 0;
-    for (Color c = RED; c <= BLUE; c++) {
-        // One '0' card
-        DECK[i++] = (Card){c, ZERO};
-        // Two of each number 1-9
-        for (CardType t = ONE; t <= NINE; t++) {
-            DECK[i++] = (Card){c, t};
-            DECK[i++] = (Card){c, t};
+    int card_index = 0;
+    for (Color c = RED; c <= YELLOW; c++) {
+        for (CardType t = ZERO; t <= NINE; t++) {
+            DECK[card_index].color = c;
+            DECK[card_index].type = t;
+            card_index++;
         }
-        // Two of each action card
-        DECK[i++] = (Card){c, SKIP};
-        DECK[i++] = (Card){c, SKIP};
-        DECK[i++] = (Card){c, REVERSE};
-        DECK[i++] = (Card){c, REVERSE};
-        DECK[i++] = (Card){c, DRAW_TWO};
-        DECK[i++] = (Card){c, DRAW_TWO};
     }
-    // Four of each wild card
-    for (int j = 0; j < 4; j++) {
-        DECK[i++] = (Card){WILD_COLOR, WILD_TYPE};
-        DECK[i++] = (Card){WILD_COLOR, WILD_DRAW_FOUR};
-    }
-    deck_top = NUM_CARDS_IN_DECK - 1;
+    deck_top = DECK_SIZE - 1;
 }
 
-// Shuffles the deck using Fisher-Yates algorithm
 void shuffle_deck() {
-    for (int i = deck_top; i > 0; i--) {
-        int j = rand() % (i + 1);
+    for (int i = 0; i < DECK_SIZE; i++) {
+        int j = rand() % DECK_SIZE;
         Card temp = DECK[i];
         DECK[i] = DECK[j];
         DECK[j] = temp;
     }
 }
 
-// Draws a card from the deck
-Card draw_card_from_deck() {
+Card draw_card() {
     // Reshuffle discard pile if deck is empty
     if (deck_top < 0) {
-        printf("Deck is empty. Reshuffling discard pile...\n");
-        // Keep top card of discard pile
-        Card top_card = DISCARD_PILE[discard_top--];
-        // Move rest of discard pile to deck
-        while (discard_top >= 0) {
-            DECK[++deck_top] = DISCARD_PILE[discard_top--];
+        printf("Deck is empty. Shuffling discard pile.\n");
+        // Don't shuffle the top card of the discard pile
+        for (int i = 0; i < discard_top; i++) {
+            DECK[i] = DISCARD_PILE[i];
         }
+        deck_top = discard_top - 1;
+        discard_top = 0; // Keep the top card
         shuffle_deck();
-        // Put top card back on discard pile
-        DISCARD_PILE[++discard_top] = top_card;
     }
     return DECK[deck_top--];
 }
 
-
-// --- PLAYER HAND MANAGEMENT (LINKED LIST) ---
-
-// Adds a card to a player's hand
-void add_card_to_hand(Player* p, Card c) {
-    CardNode* new_node = (CardNode*)malloc(sizeof(CardNode));
-    new_node->card = c;
-    new_node->next = p->hand;
-    p->hand = new_node;
-    p->card_count++;
-}
-
-// Removes and returns a card from a player's hand by index
-Card remove_card_from_hand(Player* p, int index) {
-    CardNode* current = p->hand;
-    CardNode* prev = NULL;
-    Card card_to_play;
-
-    if (index == 1) {
-        card_to_play = current->card;
-        p->hand = current->next;
-        free(current);
-    } else {
-        for (int i = 1; i < index && current != NULL; i++) {
-            prev = current;
-            current = current->next;
-        }
-        card_to_play = current->card;
-        prev->next = current->next;
-        free(current);
-    }
-    p->card_count--;
-    return card_to_play;
-}
-
-// Displays a player's hand
-void print_hand(Player* p) {
-    printf("%s's Hand (%d cards):\n", p->name, p->card_count);
-    CardNode* current = p->hand;
-    int i = 1;
-    while (current != NULL) {
-        printf("  %d: ", i++);
-        print_card(current->card);
-        printf("\n");
-        current = current->next;
-    }
-}
-
-// --- GAME LOGIC ---
-
-// Checks if a card is playable
-bool is_playable(Card card_to_play, Card top_of_discard, Color current_color) {
-    if (card_to_play.color == WILD_COLOR) return true;
-    if (card_to_play.color == current_color) return true;
-    if (card_to_play.type == top_of_discard.type) return true;
-    return false;
-}
-
-// Prompts for and returns a valid player choice
-int get_player_choice(Player* p, Card top_of_discard, Color current_color) {
-    int choice = 0;
-    while (true) {
-        printf("Enter card number to play (or 0 to draw): ");
-        scanf("%d", &choice);
-
-        if (choice == 0) return 0;
-        if (choice < 0 || choice > p->card_count) {
-            printf("Invalid choice. Try again.\n");
-            continue;
-        }
-
-        // Find the card at the chosen index
-        CardNode* current = p->hand;
-        for (int i = 1; i < choice; i++) {
-            current = current->next;
-        }
-
-        if (is_playable(current->card, top_of_discard, current_color)) {
-            return choice;
-        } else {
-            printf("That card is not playable. Try again.\n");
-        }
-    }
-}
-
-// Asks user to choose a color for a Wild card
-Color get_wild_color() {
-    int choice = 0;
-    while (true) {
-        printf("Choose a color (1:Red, 2:Yellow, 3:Green, 4:Blue): ");
-        scanf("%d", &choice);
-        if (choice >= 1 && choice <= 4) {
-            return (Color)(choice - 1);
-        }
-        printf("Invalid choice. Try again.\n");
-    }
-}
-
-
-// --- MAIN GAME ---
-
-int main() {
-    srand(time(NULL)); // Seed random number generator
-
-    int num_players;
-    printf("Welcome to UNO!\n");
-    printf("Enter number of players (2-4): ");
-    scanf("%d", &num_players);
-
-    if (num_players < 2 || num_players > 4) {
-        printf("Invalid number of players.\n");
-        return 1;
-    }
-
-    // Initialize players
-    Player players[num_players];
-    for (int i = 0; i < num_players; i++) {
-        printf("Enter Player %d's name: ", i + 1);
-        scanf("%s", players[i].name);
-        players[i].hand = NULL;
-        players[i].card_count = 0;
-    }
-
-    // Setup Game
-    create_deck();
-    shuffle_deck();
-
-    // Deal 7 cards to each player
+void deal_cards() {
     for (int i = 0; i < 7; i++) {
-        for (int j = 0; j < num_players; j++) {
-            add_card_to_hand(&players[j], draw_card_from_deck());
+        for (int p = 0; p < num_players; p++) {
+            players[p].hand[i] = draw_card();
+            players[p].card_count++;
         }
     }
+}
 
-    // Start the discard pile
-    DISCARD_PILE[++discard_top] = draw_card_from_deck();
-    Card top_card = DISCARD_PILE[discard_top];
-    Color current_color = top_card.color;
-
-    // Handle special first card
-    if (top_card.color == WILD_COLOR) {
-        printf("First card is a Wild! Player 1 chooses the color.\n");
-        current_color = get_wild_color();
-    }
+void play_card(int player_idx, int hand_idx) {
+    Card played_card = players[player_idx].hand[hand_idx];
     
-    // Game state variables
-    int current_player_index = 0;
-    int play_direction = 1; // 1 for forward, -1 for backward
-    bool game_over = false;
+    DISCARD_PILE[++discard_top] = played_card;
 
-    // Main Game Loop
-    while (!game_over) {
-        Player* current_player = &players[current_player_index];
-        top_card = DISCARD_PILE[discard_top];
+    // "Remove" card from hand by setting it to an empty state
+    players[player_idx].hand[hand_idx].color = NO_COLOR;
+    players[player_idx].hand[hand_idx].type = NO_TYPE;
+    players[player_idx].card_count--;
 
-        printf("\n--------------------------------\n");
-        printf("Top Card: ");
-        print_card(top_card);
-        if (top_card.color == WILD_COLOR) {
-            printf(" (Current Color: %s)", color_to_string(current_color));
-        }
-        printf("\n\n");
-        
-        printf("It's %s's turn.\n", current_player->name);
-        print_hand(current_player);
+    printf("%s plays: ", players[player_idx].name);
+    print_card(played_card);
+    printf("\n");
+}
 
-        int choice = get_player_choice(current_player, top_card, current_color);
+int is_playable(Card top_card, Card card_to_play) {
+    // Rule: Must match color or number
+    return (top_card.color == card_to_play.color || top_card.type == card_to_play.type);
+}
 
-        if (choice == 0) { // Player chose to draw
-            Card drawn_card = draw_card_from_deck();
-            printf("%s draws a card: ", current_player->name);
-            print_card(drawn_card);
+void print_card(Card card) {
+    const char* colors[] = {"Red", "Green", "Blue", "Yellow"};
+    const char* types[] = {"0", "1", "2", "3", "4", "5", "6", "7", "8", "9"};
+
+    if (card.color >= RED && card.color <= YELLOW) {
+        printf("[%s %s]", colors[card.color], types[card.type]);
+    }
+}
+
+void print_hand(int player_idx) {
+    printf("%s's Hand (%d cards):\n", players[player_idx].name, players[player_idx].card_count);
+    int card_num = 1;
+    for (int i = 0; i < MAX_HAND_SIZE; i++) {
+        // Only print cards that are actually in the hand
+        if (players[player_idx].hand[i].color != NO_COLOR) {
+            printf("  %d: ", card_num++);
+            print_card(players[player_idx].hand[i]);
             printf("\n");
-
-            if (is_playable(drawn_card, top_card, current_color)) {
-                printf("The drawn card is playable!\n");
-                DISCARD_PILE[++discard_top] = drawn_card;
-                current_color = drawn_card.color;
-                 // Handle special card effects from drawn card
-                if (drawn_card.color == WILD_COLOR) {
-                     current_color = get_wild_color();
-                }
-            } else {
-                add_card_to_hand(current_player, drawn_card);
-            }
-        } else { // Player chose to play a card
-            Card card_to_play = remove_card_from_hand(current_player, choice);
-            DISCARD_PILE[++discard_top] = card_to_play;
-            current_color = card_to_play.color;
-
-            // Handle card effects
-            switch (card_to_play.type) {
-                case REVERSE:
-                    play_direction *= -1;
-                    printf("Play direction reversed!\n");
-                    break;
-                case SKIP:
-                    current_player_index = (current_player_index + play_direction + num_players) % num_players;
-                    printf("%s is skipped!\n", players[current_player_index].name);
-                    break;
-                case DRAW_TWO:
-                    {
-                        int next_player = (current_player_index + play_direction + num_players) % num_players;
-                        printf("%s draws two cards and is skipped!\n", players[next_player].name);
-                        add_card_to_hand(&players[next_player], draw_card_from_deck());
-                        add_card_to_hand(&players[next_player], draw_card_from_deck());
-                        current_player_index = (current_player_index + play_direction + num_players) % num_players;
-                    }
-                    break;
-                case WILD_TYPE:
-                    current_color = get_wild_color();
-                    break;
-                case WILD_DRAW_FOUR:
-                    {
-                        current_color = get_wild_color();
-                        int next_player = (current_player_index + play_direction + num_players) % num_players;
-                        printf("%s draws four cards and is skipped!\n", players[next_player].name);
-                        for(int i=0; i<4; i++) add_card_to_hand(&players[next_player], draw_card_from_deck());
-                        current_player_index = (current_player_index + play_direction + num_players) % num_players;
-                    }
-                    break;
-                default:
-                    break; // Number cards have no special effect
-            }
-        }
-
-        // Check for winner
-        if (current_player->card_count == 0) {
-            printf("\n%s has played their last card!\n", current_player->name);
-            printf("%s wins!\n", current_player->name);
-            game_over = true;
-        } else {
-             if (current_player->card_count == 1) {
-                printf("\n%s has UNO!\n", current_player->name);
-            }
-            // Move to next player
-            current_player_index = (current_player_index + play_direction + num_players) % num_players;
         }
     }
-
-    // Free allocated memory for hands
-    for (int i = 0; i < num_players; i++) {
-        CardNode* current = players[i].hand;
-        while (current != NULL) {
-            CardNode* temp = current;
-            current = current->next;
-            free(temp);
-        }
-    }
-
-    return 0;
 }
