@@ -1,0 +1,633 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>UNO Card Game</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link href="https://fonts.googleapis.com/css2?family=Poppins:wght@400;600;700&display=swap" rel="stylesheet">
+    <style>
+        body {
+            font-family: 'Poppins', sans-serif;
+            overflow: hidden;
+            background: radial-gradient(circle, #3a4a6e, #1e293b);
+        }
+        .card {
+            width: 100px;
+            height: 150px;
+            border-radius: 10px;
+            border: 2px solid white;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 2.5rem;
+            font-weight: 700;
+            color: white;
+            position: relative;
+            cursor: pointer;
+            transition: all 0.2s ease-in-out;
+            box-shadow: 0 4px 15px rgba(0, 0, 0, 0.4);
+            text-shadow: 2px 2px 4px rgba(0,0,0,0.5);
+        }
+        .card:hover {
+            transform: translateY(-10px) scale(1.05);
+            box-shadow: 0 8px 25px rgba(0, 0, 0, 0.6);
+        }
+        .card-inner {
+            width: 70px;
+            height: 120px;
+            background-color: white;
+            border-radius: 8px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+        .card-value {
+            transform: rotate(-45deg);
+        }
+        .card-top-left, .card-bottom-right {
+            position: absolute;
+            font-size: 1.2rem;
+            font-weight: 600;
+        }
+        .card-top-left { top: 10px; left: 15px; }
+        .card-bottom-right { bottom: 10px; right: 15px; transform: rotate(180deg); }
+        .card-red { background-color: #ef4444; }
+        .card-yellow { background-color: #facc15; }
+        .card-green { background-color: #4ade80; }
+        .card-blue { background-color: #60a5fa; }
+        .card-wild { background: linear-gradient(135deg, #ef4444, #facc15, #4ade80, #60a5fa); }
+        .card-back {
+            background: #1e293b;
+            border: 4px solid #f8fafc;
+        }
+        .card-back .card-inner {
+            background-color: #ef4444;
+            color: #facc15;
+            font-style: italic;
+            font-size: 2.5rem;
+            transform: rotate(15deg);
+        }
+        .player-hand {
+            display: flex;
+            justify-content: center;
+            align-items: flex-end;
+            padding: 10px;
+            min-height: 180px;
+            transition: transform 0.3s ease;
+        }
+        .player-hand .card {
+            margin: 0 -35px;
+        }
+        .player-hand:hover .card {
+            margin: 0 -15px;
+        }
+        .cpu-hand .card { margin: 0 -60px; }
+        .cpu-hand.hand-top { transform: rotate(180deg); }
+        .cpu-hand.hand-left { position: absolute; top: 50%; left: 10px; transform: translateY(-50%) rotate(90deg); }
+        .cpu-hand.hand-right { position: absolute; top: 50%; right: 10px; transform: translateY(-50%) rotate(-90deg); }
+
+        .game-board {
+            display: grid;
+            grid-template-areas:
+                "cpu2 cpu2 cpu2"
+                "cpu1 pile cpu3"
+                "player player player";
+            grid-template-rows: auto 1fr auto;
+            grid-template-columns: 200px 1fr 200px;
+            height: 100vh;
+            width: 100vw;
+            padding: 20px;
+            box-sizing: border-box;
+        }
+        .active-player-indicator {
+            transition: all 0.5s ease-in-out;
+            box-shadow: 0 0 20px 5px #facc15;
+            border-radius: 12px;
+        }
+        .message-box {
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            padding: 2rem 3rem;
+            background-color: rgba(30, 41, 59, 0.9);
+            color: white;
+            border-radius: 1rem;
+            box-shadow: 0 10px 30px rgba(0,0,0,0.5);
+            text-align: center;
+            z-index: 100;
+            font-size: 1.5rem;
+            border: 2px solid #facc15;
+        }
+    </style>
+</head>
+<body class="bg-slate-800 text-white select-none">
+
+    <div id="game-container" class="game-board">
+        <!-- CPU 2 (Top) -->
+        <div id="player-2-area" class="flex flex-col items-center justify-center" style="grid-area: cpu2;">
+            <div id="player-2-hand" class="cpu-hand hand-top player-hand"></div>
+            <p id="player-2-name" class="mt-2 text-lg font-semibold">CPU 2</p>
+        </div>
+
+        <!-- CPU 1 (Left) -->
+        <div id="player-1-area" class="flex flex-col items-center justify-center" style="grid-area: cpu1;">
+            <p id="player-1-name" class="mb-2 text-lg font-semibold -rotate-90">CPU 1</p>
+            <div id="player-1-hand" class="cpu-hand hand-left player-hand"></div>
+        </div>
+
+        <!-- Center Pile -->
+        <div class="flex flex-col items-center justify-center space-y-8" style="grid-area: pile;">
+            <div class="text-center">
+                 <p id="game-message" class="text-xl font-bold text-yellow-300 h-8"></p>
+                 <p id="turn-indicator" class="text-lg mt-2"></p>
+            </div>
+            <div class="flex items-center justify-center space-x-8">
+                <div id="deck-pile" class="card card-back">
+                    <div class="card-inner">UNO</div>
+                </div>
+                <div id="discard-pile" class="w-[100px] h-[150px]"></div>
+            </div>
+            <div id="current-color-indicator" class="w-10 h-10 rounded-full border-2 border-white shadow-lg"></div>
+        </div>
+
+        <!-- CPU 3 (Right) -->
+        <div id="player-3-area" class="flex flex-col items-center justify-center" style="grid-area: cpu3;">
+             <p id="player-3-name" class="mb-2 text-lg font-semibold rotate-90">CPU 3</p>
+            <div id="player-3-hand" class="cpu-hand hand-right player-hand"></div>
+        </div>
+
+        <!-- Human Player (Bottom) -->
+        <div id="player-0-area" class="flex flex-col items-center justify-center" style="grid-area: player;">
+            <p id="player-0-name" class="mb-2 text-lg font-semibold">You</p>
+            <div id="player-0-hand" class="player-hand"></div>
+        </div>
+    </div>
+
+    <!-- Modals -->
+    <div id="start-modal" class="fixed inset-0 bg-black bg-opacity-75 flex items-center justify-center z-50">
+        <div class="bg-slate-700 p-8 rounded-lg text-center shadow-xl">
+            <h1 class="text-5xl font-bold mb-4 text-yellow-300">UNO</h1>
+            <p class="mb-6 text-lg">Enter your name to begin:</p>
+            <input type="text" id="player-name-input" class="text-black text-center p-2 rounded w-64 mb-4" value="Player 1">
+            <button id="start-game-btn" class="bg-blue-500 hover:bg-blue-600 px-8 py-3 rounded-lg text-xl font-bold transition-transform transform hover:scale-105">Start Game</button>
+        </div>
+    </div>
+
+    <div id="color-picker-modal" class="fixed inset-0 bg-black bg-opacity-75 items-center justify-center z-50 hidden">
+        <div class="bg-slate-700 p-8 rounded-lg text-center shadow-xl">
+            <h2 class="text-2xl font-bold mb-6">Choose a Color</h2>
+            <div class="flex space-x-4">
+                <button data-color="RED" class="w-20 h-20 rounded-full card-red transition-transform transform hover:scale-110"></button>
+                <button data-color="YELLOW" class="w-20 h-20 rounded-full card-yellow transition-transform transform hover:scale-110"></button>
+                <button data-color="GREEN" class="w-20 h-20 rounded-full card-green transition-transform transform hover:scale-110"></button>
+                <button data-color="BLUE" class="w-20 h-20 rounded-full card-blue transition-transform transform hover:scale-110"></button>
+            </div>
+        </div>
+    </div>
+    
+    <div id="game-over-modal" class="fixed inset-0 bg-black bg-opacity-75 items-center justify-center z-50 hidden">
+        <div class="bg-slate-700 p-8 rounded-lg text-center shadow-xl">
+            <h2 id="winner-message" class="text-4xl font-bold mb-6">Player Wins!</h2>
+            <button id="play-again-btn" class="bg-green-500 hover:bg-green-600 px-8 py-3 rounded-lg text-xl font-bold transition-transform transform hover:scale-105">Play Again</button>
+        </div>
+    </div>
+    
+    <div id="message-box-container" class="absolute top-8 left-1/2 -translate-x-1/2 z-[100]"></div>
+
+
+<script>
+    // --- ENUMS & CONSTANTS (JS Translation) ---
+    const Color = { RED: 'RED', YELLOW: 'YELLOW', GREEN: 'GREEN', BLUE: 'BLUE', WILD_COLOR: 'WILD_COLOR' };
+    const CardType = {
+        ZERO: '0', ONE: '1', TWO: '2', THREE: '3', FOUR: '4', FIVE: '5', SIX: '6', SEVEN: '7', EIGHT: '8', NINE: '9',
+        SKIP: 'SKIP', REVERSE: 'REVERSE', DRAW_TWO: 'DRAW_TWO', WILD_TYPE: 'WILD', WILD_DRAW_FOUR: 'WILD_DRAW_FOUR'
+    };
+    const NUM_PLAYERS = 4;
+    const HUMAN_PLAYER_INDEX = 0;
+
+    // --- DOM ELEMENTS ---
+    const deckPile = document.getElementById('deck-pile');
+    const discardPileContainer = document.getElementById('discard-pile');
+    const colorPickerModal = document.getElementById('color-picker-modal');
+    const startModal = document.getElementById('start-modal');
+    const gameOverModal = document.getElementById('game-over-modal');
+    const winnerMessage = document.getElementById('winner-message');
+    const gameMessage = document.getElementById('game-message');
+    const turnIndicator = document.getElementById('turn-indicator');
+    const currentColorIndicator = document.getElementById('current-color-indicator');
+
+    // --- GAME STATE VARIABLES ---
+    let deck = [];
+    let discardPile = [];
+    let players = [];
+    let currentPlayerIndex = 0;
+    let playDirection = 1; // 1 for forward, -1 for backward
+    let currentColor;
+    let gameInProgress = false;
+
+    // --- UTILITY & CARD RENDERING FUNCTIONS ---
+    
+    function getCardHTML(card, isFaceDown = false) {
+        if (isFaceDown) {
+            return '<div class="card card-back"><div class="card-inner">UNO</div></div>';
+        }
+
+        const colorClass = {
+            RED: 'card-red', YELLOW: 'card-yellow', GREEN: 'card-green',
+            BLUE: 'card-blue', WILD_COLOR: 'card-wild'
+        }[card.color];
+        
+        const typeString = {
+            SKIP: 'skip', REVERSE: 'rev', DRAW_TWO: '+2', WILD_TYPE: 'wild', WILD_DRAW_FOUR: '+4'
+        }[card.type] || card.type;
+        
+        const valueColor = card.color === 'WILD_COLOR' ? 'text-black' : `text-${colorClass.split('-')[1]}-800`;
+        const specialIcon = {
+            SKIP: '🚫', REVERSE: '🔄', DRAW_TWO: '➕2️⃣', WILD_TYPE: '🎨', WILD_DRAW_FOUR: '➕4️⃣'
+        }[card.type];
+
+        return `
+            <div class="card ${colorClass}" data-color="${card.color}" data-type="${card.type}">
+                <span class="card-top-left">${typeString}</span>
+                <div class="card-inner">
+                    <span class="card-value ${valueColor}">${specialIcon || card.type}</span>
+                </div>
+                <span class="card-bottom-right">${typeString}</span>
+            </div>
+        `;
+    }
+
+    function showTemporaryMessage(message, duration = 2000) {
+        gameMessage.textContent = message;
+        setTimeout(() => {
+           if(gameMessage.textContent === message) gameMessage.textContent = '';
+        }, duration);
+    }
+    
+    // --- DECK MANAGEMENT ---
+
+    function createDeck() {
+        deck = [];
+        const colors = [Color.RED, Color.YELLOW, Color.GREEN, Color.BLUE];
+        const types = Object.values(CardType);
+
+        colors.forEach(c => {
+            deck.push({ color: c, type: CardType.ZERO });
+            for (let i = 1; i <= 9; i++) {
+                deck.push({ color: c, type: types[i] });
+                deck.push({ color: c, type: types[i] });
+            }
+            ['SKIP', 'REVERSE', 'DRAW_TWO'].forEach(action => {
+                deck.push({ color: c, type: CardType[action] });
+                deck.push({ color: c, type: CardType[action] });
+            });
+        });
+        for (let i = 0; i < 4; i++) {
+            deck.push({ color: Color.WILD_COLOR, type: CardType.WILD_TYPE });
+            deck.push({ color: Color.WILD_COLOR, type: CardType.WILD_DRAW_FOUR });
+        }
+    }
+
+    function shuffleDeck() {
+        for (let i = deck.length - 1; i > 0; i--) {
+            const j = Math.floor(Math.random() * (i + 1));
+            [deck[i], deck[j]] = [deck[j], deck[i]];
+        }
+    }
+
+    function drawCardFromDeck() {
+        if (deck.length === 0) {
+            console.log("Reshuffling discard pile...");
+            showTemporaryMessage("Reshuffling discard pile...", 1500);
+            const topCard = discardPile.pop();
+            deck = [...discardPile];
+            discardPile = [topCard];
+            shuffleDeck();
+        }
+        return deck.pop();
+    }
+    
+    // --- PLAYER & HAND MANAGEMENT ---
+
+    function renderHands() {
+        players.forEach((player, index) => {
+            const handElement = document.getElementById(`player-${index}-hand`);
+            const nameElement = document.getElementById(`player-${index}-name`);
+            nameElement.textContent = `${player.name} (${player.hand.length})`;
+            
+            handElement.innerHTML = player.hand.map((card, cardIndex) => {
+                if (index === HUMAN_PLAYER_INDEX) {
+                    // Create a temporary element to safely add the data attribute
+                    const wrapper = document.createElement('div');
+                    wrapper.innerHTML = getCardHTML(card).trim(); // .trim() is important
+                    const cardElement = wrapper.firstChild;
+                    if (cardElement) {
+                        cardElement.dataset.cardIndex = cardIndex;
+                        return cardElement.outerHTML;
+                    }
+                    return ''; // Failsafe
+                } else {
+                    return getCardHTML(card, true);
+                }
+            }).join('');
+        });
+    }
+
+    function renderBoard() {
+        // Render top of discard pile
+        const topCard = discardPile[discardPile.length - 1];
+        discardPileContainer.innerHTML = getCardHTML(topCard);
+
+        // Update current color indicator
+        const colorClass = {
+            RED: 'bg-red-500', YELLOW: 'bg-yellow-400', GREEN: 'bg-green-500', BLUE: 'bg-blue-500'
+        }[currentColor];
+        currentColorIndicator.className = `w-10 h-10 rounded-full border-2 border-white shadow-lg ${colorClass}`;
+        
+        // Update turn indicator and active player highlight
+        for(let i=0; i < NUM_PLAYERS; i++) {
+            document.getElementById(`player-${i}-area`).classList.remove('active-player-indicator');
+        }
+        document.getElementById(`player-${currentPlayerIndex}-area`).classList.add('active-player-indicator');
+        turnIndicator.textContent = `Turn: ${players[currentPlayerIndex].name}`;
+
+
+        renderHands();
+    }
+
+    // --- GAME LOGIC ---
+
+    function isWildDrawFourPlayable(playerIndex) {
+        const player = players[playerIndex];
+        // Player can play a Wild Draw Four if they have no cards matching the current color.
+        return !player.hand.some(card => card.color === currentColor && card.color !== Color.WILD_COLOR);
+    }
+
+    function isPlayable(card, playerIndex) {
+        const topCard = discardPile[discardPile.length - 1];
+        if (card.type === CardType.WILD_DRAW_FOUR) {
+            return isWildDrawFourPlayable(playerIndex);
+        }
+        return card.color === Color.WILD_COLOR || card.color === currentColor || card.type === topCard.type;
+    }
+
+    async function handleCardPlay(playerIndex, cardIndex) {
+        const player = players[playerIndex];
+        const cardToPlay = player.hand.splice(cardIndex, 1)[0];
+        
+        discardPile.push(cardToPlay);
+        currentColor = cardToPlay.color;
+        
+        console.log(`${player.name} plays:`, cardToPlay);
+        renderBoard(); // Render immediately to show card moving
+
+        // Handle special card effects
+        switch (cardToPlay.type) {
+            case CardType.REVERSE:
+                playDirection *= -1;
+                showTemporaryMessage("Direction Reversed!", 1500);
+                break;
+
+            case CardType.SKIP:
+                currentPlayerIndex = (currentPlayerIndex + playDirection + NUM_PLAYERS) % NUM_PLAYERS;
+                showTemporaryMessage(`${players[currentPlayerIndex].name} is skipped!`, 1500);
+                break;
+                
+            case CardType.DRAW_TWO:
+                await applyDrawEffect(2);
+                break;
+
+            case CardType.WILD_TYPE:
+                await handleWildCard();
+                break;
+                
+            case CardType.WILD_DRAW_FOUR:
+                await handleWildCard();
+                await applyDrawEffect(4);
+                break;
+        }
+
+        if (player.hand.length === 0) {
+            endGame(player.name);
+            return;
+        }
+        if (player.hand.length === 1) {
+            showTemporaryMessage(`${player.name} has UNO!`, 2000);
+        }
+
+        nextTurn();
+    }
+    
+    async function applyDrawEffect(count) {
+        const nextPlayerIndex = (currentPlayerIndex + playDirection + NUM_PLAYERS) % NUM_PLAYERS;
+        const nextPlayer = players[nextPlayerIndex];
+        showTemporaryMessage(`${nextPlayer.name} draws ${count}!`, 1500);
+        for(let i = 0; i < count; i++) {
+             await new Promise(resolve => setTimeout(resolve, 200)); // Dramatic pause
+             nextPlayer.hand.push(drawCardFromDeck());
+             renderHands();
+        }
+        currentPlayerIndex = (currentPlayerIndex + playDirection + NUM_PLAYERS) % NUM_PLAYERS;
+    }
+
+    function handleWildCard() {
+        return new Promise(resolve => {
+            if (currentPlayerIndex === HUMAN_PLAYER_INDEX) {
+                colorPickerModal.style.display = 'flex';
+                colorPickerModal.onclick = (e) => {
+                    if (e.target.dataset.color) {
+                        currentColor = Color[e.target.dataset.color];
+                        colorPickerModal.style.display = 'none';
+                        renderBoard();
+                        resolve();
+                    }
+                };
+            } else { // CPU chooses color
+                const colorsInHand = players[currentPlayerIndex].hand.map(c => c.color).filter(c => c !== Color.WILD_COLOR);
+                const colorCounts = colorsInHand.reduce((acc, c) => (acc[c] = (acc[c] || 0) + 1, acc), {});
+                const mostFrequentColor = Object.keys(colorCounts).sort((a,b) => colorCounts[b] - colorCounts[a])[0] || Object.values(Color)[Math.floor(Math.random() * 4)];
+                currentColor = mostFrequentColor;
+                showTemporaryMessage(`${players[currentPlayerIndex].name} chose ${currentColor}`, 1500);
+                renderBoard();
+                resolve();
+            }
+        });
+    }
+
+    function handlePlayerDraw() {
+        if (currentPlayerIndex !== HUMAN_PLAYER_INDEX || !gameInProgress) return;
+        const player = players[HUMAN_PLAYER_INDEX];
+        const drawnCard = drawCardFromDeck();
+        player.hand.push(drawnCard);
+        showTemporaryMessage(`You drew a card.`, 1500);
+        
+        // According to official rules, if you draw a card you can play it *if it is playable*, but then your turn ends.
+        if (!isPlayable(drawnCard, HUMAN_PLAYER_INDEX)) {
+            renderHands();
+            nextTurn();
+        } else {
+             renderHands();
+             showTemporaryMessage(`You can play the card you drew!`, 2500);
+             // The player can now click the newly drawn card to play it, or do nothing to end their turn.
+             // For simplicity in this version, we will just end the turn. To play the card, they must click it.
+        }
+    }
+    
+    function nextTurn() {
+        currentPlayerIndex = (currentPlayerIndex + playDirection + NUM_PLAYERS) % NUM_PLAYERS;
+        renderBoard();
+
+        if (currentPlayerIndex !== HUMAN_PLAYER_INDEX && gameInProgress) {
+            setTimeout(cpuTurn, 1500);
+        }
+    }
+
+    function cpuTurn() {
+        const cpu = players[currentPlayerIndex];
+        const playableCards = cpu.hand
+            .map((card, index) => ({ card, index }))
+            .filter(item => isPlayable(item.card, currentPlayerIndex));
+
+        if (playableCards.length > 0) {
+            // Simple AI: play the first playable card. Could be improved.
+            handleCardPlay(currentPlayerIndex, playableCards[0].index);
+        } else {
+            // CPU draws a card
+            const drawnCard = drawCardFromDeck();
+            cpu.hand.push(drawnCard);
+            showTemporaryMessage(`${cpu.name} draws a card.`, 1500);
+            renderBoard();
+            
+            if (isPlayable(drawnCard, currentPlayerIndex)) {
+                setTimeout(() => {
+                    showTemporaryMessage(`${cpu.name} plays the card they drew.`, 1500);
+                    handleCardPlay(currentPlayerIndex, cpu.hand.length - 1);
+                }, 1000);
+            } else {
+                nextTurn();
+            }
+        }
+    }
+    
+    // --- GAME SETUP & FLOW ---
+
+    async function handleFirstCardEffects(firstCard) {
+        let message = "";
+        let playerToAffect;
+
+        switch(firstCard.type) {
+            case CardType.REVERSE:
+                playDirection *= -1;
+                message = "Play direction is reversed from the start!";
+                break;
+            case CardType.SKIP:
+                playerToAffect = players[currentPlayerIndex];
+                message = `${playerToAffect.name} is skipped at the start!`;
+                currentPlayerIndex = (currentPlayerIndex + playDirection + NUM_PLAYERS) % NUM_PLAYERS;
+                break;
+            case CardType.DRAW_TWO:
+                playerToAffect = players[currentPlayerIndex];
+                message = `${playerToAffect.name} must draw 2 and is skipped!`;
+                for(let i = 0; i < 2; i++) {
+                    await new Promise(resolve => setTimeout(resolve, 200));
+                    playerToAffect.hand.push(drawCardFromDeck());
+                }
+                currentPlayerIndex = (currentPlayerIndex + playDirection + NUM_PLAYERS) % NUM_PLAYERS;
+                break;
+        }
+
+        if (message) {
+            showTemporaryMessage(message, 2500);
+        }
+    }
+
+    async function startGame(playerName) {
+        startModal.style.display = 'none';
+        gameInProgress = true;
+        
+        createDeck();
+        shuffleDeck();
+
+        players = [
+            { name: playerName, hand: [] },
+            { name: 'CPU 1', hand: [] },
+            { name: 'CPU 2', hand: [] },
+            { name: 'CPU 3', hand: [] }
+        ];
+
+        // Deal cards
+        for (let i = 0; i < 7; i++) {
+            for (let j = 0; j < NUM_PLAYERS; j++) {
+                players[j].hand.push(drawCardFromDeck());
+            }
+        }
+
+        // Start discard pile
+        let firstCard = drawCardFromDeck();
+        // A Wild card is not a valid starting card in this version
+        while(firstCard.color === Color.WILD_COLOR){ 
+            deck.unshift(firstCard); // Put it back in the deck
+            shuffleDeck();
+            firstCard = drawCardFromDeck();
+        }
+        discardPile = [firstCard];
+        currentColor = firstCard.color;
+
+        currentPlayerIndex = Math.floor(Math.random() * NUM_PLAYERS);
+        
+        await handleFirstCardEffects(firstCard);
+        
+        renderBoard();
+        showTemporaryMessage("Game Start!", 2000);
+
+        if (currentPlayerIndex !== HUMAN_PLAYER_INDEX) {
+            setTimeout(cpuTurn, 1500);
+        }
+    }
+    
+    function endGame(winnerName) {
+        gameInProgress = false;
+        winnerMessage.textContent = `${winnerName} Wins!`;
+        gameOverModal.style.display = 'flex';
+    }
+
+    // --- EVENT LISTENERS ---
+    document.getElementById('start-game-btn').addEventListener('click', () => {
+        const playerName = document.getElementById('player-name-input').value || 'Player 1';
+        startGame(playerName);
+    });
+
+    document.getElementById('play-again-btn').addEventListener('click', () => {
+        gameOverModal.style.display = 'none';
+        startModal.style.display = 'flex';
+    });
+
+    document.getElementById('player-0-hand').addEventListener('click', e => {
+        if (currentPlayerIndex !== HUMAN_PLAYER_INDEX || !gameInProgress) return;
+        const cardElement = e.target.closest('.card');
+        if (cardElement) {
+            const cardIndex = parseInt(cardElement.dataset.cardIndex);
+            const card = players[HUMAN_PLAYER_INDEX].hand[cardIndex];
+            if (isPlayable(card, HUMAN_PLAYER_INDEX)) {
+                handleCardPlay(HUMAN_PLAYER_INDEX, cardIndex);
+            } else {
+                if (card.type === CardType.WILD_DRAW_FOUR) {
+                    showTemporaryMessage("Can't play Wild Draw 4; you have a playable color!", 2000);
+                } else {
+                    showTemporaryMessage("This card is not playable!", 1500);
+                }
+            }
+        }
+    });
+
+    deckPile.addEventListener('click', handlePlayerDraw);
+
+</script>
+
+</body>
+</html>
+
+
+
